@@ -1,0 +1,13 @@
+{
+    "server": {
+        "environment": "development",
+        "host": "localhost",
+        "port": 9090,
+        "threads": 2
+    },
+    "database": {
+        "default": {
+            "uri": "mongodb://localhost:27017/mocherry_sample_app"
+        }
+    }
+}
