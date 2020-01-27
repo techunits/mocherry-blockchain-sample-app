@@ -9,5 +9,9 @@
         "default": {
             "uri": "mongodb://localhost:27017/mocherry_sample_app"
         }
+    },
+    "blockchain": {
+        "difficulty": 5,
+        "noonce_exponent": 64
     }
 }
