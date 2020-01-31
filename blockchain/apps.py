@@ -1,76 +1,113 @@
-import datetime
+import time
 import hashlib
+import json
 
 class Block:
-    next = None
-    hash = None
-    nonce = 0
-    block_idx = 0
-    previous_hash = 0x0
-    
-    def __init__(self, data=None):
-        self.data = data
-        self.timestamp = datetime.datetime.now()
+    def __init__(self, index, transactions, previous_hash):
+        self.index = index
+        self.transactions = transactions
+        self.timestamp = time.time()
+        self.previous_hash = previous_hash
+        self.nonce = 0
 
-    def hash(self):
-        h = hashlib.sha256()
-        h.update(
-            str(self.nonce).encode('utf-8') +
-            str(self.data).encode('utf-8') +
-            str(self.previous_hash).encode('utf-8') +
-            str(self.timestamp).encode('utf-8') +
-            str(self.block_idx).encode('utf-8')
-        )
-        return h.hexdigest()
+    def compute_hash(self):
+        """
+        A function that return the hash of the block contents.
+        """
+        block_string = json.dumps(self.__dict__, sort_keys=True)
+        return hashlib.sha512(block_string.encode()).hexdigest()
 
-    def __str__(self):
-        return 'Block Hash: {}\nBlock No: {}\nBlock Data: {}\nCalculated Hashes: {}\n\n'.format(self.hash(), self.block_idx, self.data, self.nonce)
 
 class Blockchain:
-    def __init__(self, difficulty=4, noonce_exponent=32):
+    def __init__(self, difficulty=4):
         self.difficulty = difficulty
-        self.maxNonce = 2 ** noonce_exponent
-        self.target = 2 ** (256 - self.difficulty)
-        # initialize genesis block & set the head pointer
-        self.block = Block("Genesis")
-        dummy = self.head = self.block
+        self.unconfirmed_transactions = []
+        self.chain = []
 
-    def add(self, block):
-        block.previous_hash = self.block.hash()
-        block.block_idx = self.block.block_idx + 1
-        self.block.next = block
-        self.block = self.block.next
-        # mongo_uri = CONFIG['database']['default']['uri']
-        # with DatabaseConnection(mongo_uri):
-        #     chain_info = BlockChain()
-        #     chain_info.previous_hash = payload['title']
-        #     chain_info.description = payload['description']
-        #     chain_info.tags = payload['tags']
-        #     chain_info.modified_on = datetime.now()
-        #     chain_info.save()
+        # initialize with a genesis block
+        self.create_genesis_block()
 
-    def mine(self, block):
-        for n in range(self.maxNonce):
-            if int(block.hash(), 16) <= self.target:
-                self.add(block)
-                print(block)
-                break
-            else:
-                block.nonce += 1
+    def create_genesis_block(self):
+        """
+        A function to generate genesis block and appends it to
+        the chain. The block has index 0, previous_hash as 0, and
+        a valid hash.
+        """
+        genesis_block = Block(0, [], "0")
+        genesis_block.hash = genesis_block.compute_hash()
+        self.chain.append(genesis_block)
 
-blockchain = Blockchain(difficulty=16, noonce_exponent=256)
+    @property
+    def last_block(self):
+        return self.chain[-1]
 
-import json
-from faker import Faker
-faker_obj = Faker()
+    def __add_block(self, block, proof):
+        """
+        A function that adds the block to the chain after verification.
+        Verification includes:
+        * Checking if the proof is valid.
+        * The previous_hash referred in the block and the hash of latest block
+          in the chain match.
+        """
+        previous_hash = self.last_block.hash
 
-for n in range(1000):
-    payload = json.dumps({
-        "name": faker_obj.name(),
-        "email": faker_obj.email(),
-    })
-    blockchain.mine(Block(payload))
+        if previous_hash != block.previous_hash:
+            return False
 
-while blockchain.head != None:
-    print(blockchain.head)
-    blockchain.head = blockchain.head.next
+        if not self.is_valid_proof(block, proof):
+            return False
+
+        block.hash = proof
+        print('Generation Cycles: {}\nHash: {}'.format(block.nonce, block.hash))
+        self.chain.append(block)
+        return True
+
+    def is_valid_proof(self, block, block_hash):
+        """
+        Check if block_hash is valid hash of block and satisfies
+        the difficulty criteria.
+        """
+        return (block_hash.startswith('0' * self.difficulty) and
+                block_hash == block.compute_hash())
+
+    def proof_of_work(self, block):
+        """
+        Function that tries different values of nonce to get a hash
+        that satisfies our difficulty criteria.
+        """
+        block.nonce = 0
+
+        computed_hash = block.compute_hash()
+        while not computed_hash.startswith('0' * self.difficulty):
+            block.nonce += 1
+            computed_hash = block.compute_hash()
+
+        return computed_hash
+
+    def add_new_transaction(self, transaction):
+        self.unconfirmed_transactions.append(transaction)
+        return len(self.unconfirmed_transactions)
+
+    def mine(self):
+        """
+        This function serves as an interface to add the pending
+        transactions to the blockchain by adding them to the block
+        and figuring out Proof Of Work.
+        """
+        if not self.unconfirmed_transactions:
+            return False
+
+        last_block = self.last_block
+
+        new_block = Block(index=last_block.index + 1,
+                          transactions=self.unconfirmed_transactions,
+                          previous_hash=last_block.hash)
+
+        proof = self.proof_of_work(new_block)
+        self.__add_block(new_block, proof)
+
+        self.unconfirmed_transactions = []
+        return new_block.index
+
+
+

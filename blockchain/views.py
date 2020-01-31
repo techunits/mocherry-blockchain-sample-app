@@ -2,27 +2,19 @@ from mocherry.library.views import APIViewset
 from mocherry.library.databases import DatabaseConnection
 from mocherry.library.http import status
 from mocherry.settings import CONFIG
-from .apps import Blockchain
+from .apps import Blockchain, Block
 
-blockchain = Blockchain()
+blockchain = Blockchain(difficulty=4)
 
 class BlockchainViewset(APIViewset):
     def POST(self, request, *args, **kwargs):
         payload = request.json
+        queued_transactions = blockchain.add_new_transaction(payload)
 
-        mongo_uri = CONFIG['database']['default']['uri']
-        with DatabaseConnection(mongo_uri):
-            article_info = Article()
-            article_info.title = payload['title']
-            article_info.description = payload['description']
-            article_info.tags = payload['tags']
-            article_info.modified_on = datetime.now()
-            article_info.save()
-            
         return self.send_response({
-            'id': str(article_info.pk)
+            "queue": queued_transactions
         })
-    
+
     def GET(self):
         article_list = []
 
@@ -42,4 +34,15 @@ class BlockchainViewset(APIViewset):
         return self.send_response({
             'articles': article_list
         })
+
+
+class BlockchainMineViewset(APIViewset):
+    def PUT(self, request, *args, **kwargs):
+        chain_index = blockchain.mine()
+
+        return self.send_response({
+            "index": chain_index
+        })
+    
+    
 
